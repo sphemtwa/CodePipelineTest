@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Configure SNS notifications for CloudTrail'
+
+Parameters:
+  TopicName:
+    Type: String
+    Default: CloudTrail-Notifications
+    Description: Name of the existing SNS topic
+
+Resources:
+  # Import the existing SNS topic instead of creating a new one
+  CloudTrailSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: sns:Publish
+            Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
+
+  # Update the S3 bucket policy first
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: aws-controltower-logs-349570131966-eu-west-1
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Preserve existing statements - IMPORTANT
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:GetBucketAcl
+            Resource: arn:aws:s3:::aws-controltower-logs-349570131966-eu-west-1
+          - Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: s3:PutObject
+            Resource: arn:aws:s3:::aws-controltower-logs-349570131966-eu-west-1/AWSLogs/*
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+
+  CloudTrailUpdate:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: S3BucketPolicy
+    Properties:
+      TrailName: aws-controltower-BaselineCloudTrail
+      S3BucketName: aws-controltower-logs-349570131966-eu-west-1
+      IsLogging: true
+      SnsTopicName: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
